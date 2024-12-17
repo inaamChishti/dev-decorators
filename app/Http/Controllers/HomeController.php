@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Models\Post;
+use App\Models\{Post, Comment};
 use App\Models\Like;
 
 
@@ -12,7 +12,7 @@ class HomeController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth');
+        // $this->middleware('auth');
     }
 
     public function index()
@@ -42,30 +42,35 @@ class HomeController extends Controller
 
     public function fetchPosts()
     {
-        $posts = Post::
-        // inRandomOrder()->
-        withCount('likes')->take(10)->get();
-        // dd($posts);
+        $posts = Post::withCount('likes')
+                ->with('comments.replies')
+                ->take(10)
+                ->get();
+
         return response()->json($posts);
     }
+
 
     public function deletePost($id)
     {
         // dd($id);
         $post = Post::find($id);
 
-        if (!$post) {
+        if (!$post)
+        {
             return redirect()->route('home')->with('error', 'Post not found.');
         }
 
-        if ($post->user_id !== auth()->id()) {
+        if ($post->user_id !== auth()->id())
+        {
             return redirect()->route('home')->with('error', 'Unauthorized action.');
         }
 
-        //delete photo if any
-        if ($post->photo) {
+        if ($post->photo)
+        {
             $photoPath = public_path($post->photo);
-            if (file_exists($photoPath)) {
+            if (file_exists($photoPath))
+            {
                 unlink($photoPath);
             }
         }
@@ -78,7 +83,6 @@ class HomeController extends Controller
     public function editPost($id)
     {
         $post = Post::where('id', $id)->first();
-        // dd($post);
         return view('editPost', get_defined_vars());
     }
 
@@ -117,16 +121,13 @@ class HomeController extends Controller
         $postId = $request->post_id;
 
         $existingLike = Like::where('user_id', $userId)
-                            ->where('post_id', $postId)
-                            ->first();
+                        ->where('post_id', $postId)
+                        ->first();
 
-        if ($existingLike)
-        {
-            $existingLike->delete();
-            $message = 'Like removed successfully';
-        }
-         else
-        {
+        if ($existingLike) {
+                $existingLike->delete();
+                $message = 'Like removed successfully';
+        } else {
             Like::create([
                 'user_id' => $userId,
                 'post_id' => $postId
@@ -135,5 +136,73 @@ class HomeController extends Controller
         }
 
         return response()->json(['message' => $message]);
+    }
+    public function addComment(Request $request)
+    {
+        $request->validate([
+            'content' => 'required|string',
+            'post_id' => 'required|exists:posts,id',
+        ]);
+
+        $comment            = new Comment();
+        $comment->content   = $request->content;
+        $comment->post_id   = $request->post_id;
+        $comment->user_id   = auth()->id();
+        $comment->parent_id = null;
+        $comment->save();
+
+        return response()->json(['success' => true]);
+    }
+
+    public function addReply(Request $request)
+    {
+        $request->validate([
+            'content'   => 'required|string',
+            'parent_id' => 'required|exists:comments,id',
+        ]);
+
+        $reply = new Comment();
+        $reply->content   = $request->content;
+        $reply->post_id   = Comment::find($request->parent_id)->post_id;
+        $reply->user_id   = auth()->id();
+        $reply->parent_id = $request->parent_id;
+        $reply->save();
+
+        return response()->json(['success' => true]);
+    }
+
+    public function fetchComments($postId)
+    {
+        $comments = Comment::with('user')
+            ->where('post_id', $postId)
+            ->whereNull('parent_id')
+            ->get();
+
+        $formattedComments = $comments->map(function ($comment) {
+            return [
+                'id'        => $comment->id,
+                'content'   => $comment->content,
+                'user_name' => $comment->user->name,
+            ];
+        });
+
+        return response()->json($formattedComments);
+    }
+
+
+    public function fetchReplies($commentId)
+    {
+        $replies = Comment::with('user')
+                    ->where('parent_id', $commentId)
+                    ->get();
+
+        $formattedReplies = $replies->map(function ($reply) {
+            return [
+                'content'   => $reply->content,
+                'user_name' => $reply->user->name
+            ];
+        });
+
+        return response()->json($formattedReplies);
     }
 }

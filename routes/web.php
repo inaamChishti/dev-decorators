@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\CommentController;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -14,7 +16,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::get('/', function () {
-    return redirect('/login');
+    return redirect('/home');
 
 });
 
@@ -28,6 +30,12 @@ Route::get('/fetch-posts', [App\Http\Controllers\HomeController::class, 'fetchPo
 Route::get('/edit-post/{id}', [App\Http\Controllers\HomeController::class, 'editPost'])->name('edit.post');
 Route::post('/update-post/{id}', [App\Http\Controllers\HomeController::class, 'updatePost'])->name('update.post');
 Route::post('like-post', [App\Http\Controllers\HomeController::class, 'likePost'])->name('like.post');
+Route::post('add-comment', [App\Http\Controllers\HomeController::class, 'addComment']);
+Route::post('add-reply', [App\Http\Controllers\HomeController::class, 'addReply']);
+Route::get('fetch-comments/{postId}', [App\Http\Controllers\HomeController::class, 'fetchComments']);
+Route::get('fetch-replies/{commentId}', [App\Http\Controllers\HomeController::class, 'fetchReplies']);
+
+
 
 
 

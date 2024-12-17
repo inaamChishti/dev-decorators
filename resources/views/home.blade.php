@@ -186,7 +186,6 @@
         .post {
             display: grid;
             grid-template-columns: 1fr;
-            /* Adjust column widths as needed */
             gap: 10px;
             padding: 15px;
             background-color: #fff;
@@ -197,7 +196,6 @@
         .post-header {
             display: grid;
             grid-template-columns: auto 1fr;
-            /* Adjust column widths as needed */
             align-items: center;
             gap: 10px;
         }
@@ -225,7 +223,6 @@
         .post-image img {
             width: 100%;
             max-height: 300px;
-            /* Limit image height */
             border-radius: 10px;
         }
 
@@ -233,6 +230,22 @@
             display: flex;
             align-items: center;
             gap: 10px;
+        }
+
+        .comment {
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 10px;
+        }
+
+        .comment .reply {
+            margin-left: 20px;
+            background-color: #f8f9fa;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+        .reply-form {
+            margin-top: 10px;
         }
     </style>
 
@@ -244,6 +257,7 @@
                         Create a Post
                     </div>
                     <div class="card-body">
+                        @auth
                         <form method="POST" action="#" enctype="multipart/form-data">
                             <div class="form-group">
                                 <textarea name="content" placeholder="What's on your mind?"></textarea>
@@ -264,6 +278,9 @@
                             </div>
                             <button type="submit" class="btn btncustom postBtn">Post</button>
                         </form>
+                        @else
+                            <p class="text-center">Please log in to create a post.</p>
+                        @endauth
                     </div>
                 </div>
 
@@ -293,17 +310,229 @@
 
     <script>
         $(document).ready(function() {
+            function fetchPosts() {
+                $.ajax({
+                    url: "{{ url('fetch-posts') }}",
+                    type: "GET",
+                    dataType: "json",
+                    success: function(response) {
+                        if (response.length > 0) {
+                            $('#postContainer').empty();
+                            $.each(response, function(index, post) {
+                                var timeAgo = moment(post.created_at).fromNow();
+                                var currentUserID = "{{ auth()->id() }}";
+
+                                var postCard = `
+                                <div class="card mb-4 shadow-sm">
+                                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                                        <div class="profile-info">
+                                            <h5 class="mb-0">User Name</h5>
+                                            <small class="text-muted">${timeAgo}</small>
+                                        </div>
+                                        ${post.user_id == currentUserID ? `
+                                                        <div class="post-actions">
+                                                            <a href="{{ url('edit-post/${post.id}') }}" class="btn btn-outline-success btn-sm">Edit</a>
+                                                            <a href="{{ url('delete-post/${post.id}') }}" class="btn btn-outline-danger btn-sm">Delete</a>
+                                                        </div>
+                                                    ` : ''}
+                                    </div>
+                                    <div class="card-body">
+                                        ${post.content ? `<p class="post-text">${post.content}</p>` : ''}
+                                        ${post.photo ? `
+                                                        <div class="post-image mb-3">
+                                                            <img src="${post.photo}" class="img-fluid rounded" alt="Post Image">
+                                                        </div>
+                                                    ` : ''}
+                                        <div class="post-options d-flex justify-content-between align-items-center">
+                                            <button class="btn btn-sm star-btn" data-post-id="${post.id}" style="background-color: #f9e79f;">
+                                                <i class="fa fa-star"></i> ${post.likes_count}
+                                            </button>
+                                        </div>
+                                        <hr>
+                                        <div class="post-comments">
+                                            ${currentUserID ? `
+                                                    <div class="add-comment d-flex">
+                                                        <input type="text" class="form-control comment-input me-2" placeholder="Write a comment..." data-post-id="${post.id}">
+                                                        <button class="btn btn-primary btn-sm add-comment-btn" data-post-id="${post.id}">Comment</button>
+                                                    </div>
+                                                ` : `<p class="text-muted">Please log in to comment.</p>`}
+                                            <div class="comments-list mt-3" id="comments-${post.id}">
+                                                <!-- Comments dynamically loaded here -->
+                                                <p class="text-muted text-center">No comments yet. Be the first to comment!</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>`;
+
+                                $('#postContainer').append(postCard);
+
+                                loadComments(post.id);
+                            });
+                        } else {
+                            $('#postContainer').html('<p>No posts published yet.</p>');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('There was a problem with the fetch operation:', error);
+                    }
+                });
+            }
+
+            function loadComments(postId) {
+                $.ajax({
+                    url: `{{ url('fetch-comments') }}/${postId}`,
+                    type: "GET",
+                    success: function(response) {
+                        const commentsContainer = $(`#comments-${postId}`);
+                        commentsContainer.empty();
+                        if (response.length > 0) {
+                            $.each(response, function(index, comment) {
+                                commentsContainer.append(`
+                            <div class="comment mb-3" data-comment-id="${comment.id}">
+                                <div class="comment-text">
+                                    <strong>${comment.user_name}:</strong> ${comment.content}
+                                </div>
+                                ${comment.user_id == "{{ auth()->id() }}" ? `
+                                        <button class="btn btn-outline-secondary btn-sm reply-btn mt-2" data-comment-id="${comment.id}">Reply</button>
+                                        <div class="replies-list mt-2" id="replies-${comment.id}">
+                                            <!-- Nested replies will go here -->
+                                        </div>
+                                        <div class="reply-form mt-3" id="reply-form-${comment.id}" style="display:none;">
+                                            <textarea class="form-control reply-input" placeholder="Write your reply..."></textarea>
+                                            <button class="btn btn-primary btn-sm send-reply-btn mt-2" data-comment-id="${comment.id}">Send Reply</button>
+                                        </div>
+                                    ` : ''}
+                            </div>
+                        `);
+                                loadReplies(comment.id);
+                            });
+                        } else {
+                            commentsContainer.html('<p>No comments yet. Be the first to comment!</p>');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error loading comments:', error);
+                    }
+                });
+            }
+
+            function loadReplies(commentId) {
+                $.ajax({
+                    url: `{{ url('fetch-replies') }}/${commentId}`,
+                    type: "GET",
+                    success: function(response) {
+                        const repliesContainer = $(`#replies-${commentId}`);
+                        repliesContainer.empty();
+                        $.each(response, function(index, reply) {
+                            repliesContainer.append(`
+                        <div class="reply mb-2">
+                            <strong>${reply.user_name}:</strong> ${reply.content}
+                        </div>
+                    `);
+                        });
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error loading replies:', error);
+                    }
+                });
+            }
+
+            $(document).on('click', '.add-comment-btn', function() {
+                var postId = $(this).data('post-id');
+                var content = $(`input[data-post-id="${postId}"]`).val();
+
+                if (content) {
+                    var csrfToken = $('meta[name="csrf-token"]').attr('content');
+                    $.ajax({
+                        url: "{{ url('add-comment') }}",
+                        type: "POST",
+                        data: {
+                            _token: csrfToken,
+                            content: content,
+                            post_id: postId
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                fetchPosts();
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('Error posting comment:', error);
+                        }
+                    });
+                }
+            });
+
+            $(document).on('click', '.reply-btn', function() {
+                var commentId = $(this).data('comment-id');
+                $(`#reply-form-${commentId}`).toggle();
+            });
+
+            $(document).on('click', '.send-reply-btn', function() {
+                var commentId = $(this).data('comment-id');
+                var content = $(`#reply-form-${commentId} .reply-input`).val();
+
+                if (content) {
+                    var csrfToken = $('meta[name="csrf-token"]').attr('content');
+                    $.ajax({
+                        url: "{{ url('add-reply') }}",
+                        type: "POST",
+                        data: {
+                            _token: csrfToken,
+                            content: content,
+                            parent_id: commentId
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                loadReplies(commentId);
+                                $(`#reply-form-${commentId}`).hide();
+                                $(`#reply-form-${commentId} .reply-input`).val('');
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('Error posting reply:', error);
+                        }
+                    });
+                }
+            });
+
+            fetchPosts();
+
+            $(document).on('click', '.star-btn', function() {
+                var postId = $(this).data('post-id');
+                var currentUserId = "{{ auth()->id() }}";
+                var csrfToken = $('meta[name="csrf-token"]').attr('content');
+
+                var requestData = {
+                    user_id: currentUserId,
+                    post_id: postId,
+                    _token: csrfToken
+                };
+
+                $.ajax({
+                    url: "{{ url('like-post') }}",
+                    type: "POST",
+                    data: requestData,
+                    success: function(response) {
+                        fetchPosts();
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error occurred while liking the post:', error);
+                    }
+                });
+            });
+
             $('.postBtn').click(function(e) {
                 e.preventDefault();
 
-                var content  = $('textarea[name="content"]').val();
+                var content = $('textarea[name="content"]').val();
                 var fileData = $('#photo').prop('files')[0];
 
                 if (!content && !fileData) {
                     Swal.fire({
                         title: 'Error!',
-                        text : 'Please fill out the post content or upload a photo.',
-                        icon : 'error',
+                        text: 'Please fill out the post content or upload a photo.',
+                        icon: 'error',
                         confirmButtonText: 'OK'
                     });
                     return;
@@ -316,8 +545,8 @@
 
                 Swal.fire({
                     title: 'Uploading...',
-                    text : 'Please wait while your post is being uploaded.',
-                    icon : 'info',
+                    text: 'Please wait while your post is being uploaded.',
+                    icon: 'info',
                     allowOutsideClick: false,
                     didOpen: () => {
                         Swal.showLoading();
@@ -325,7 +554,7 @@
                 });
 
                 $.ajax({
-                    url : '{{ url('new-post') }}',
+                    url: '{{ url('new-post') }}',
                     type: 'POST',
                     data: formData,
                     contentType: false,
@@ -335,8 +564,8 @@
                         if (response.message === 'Post created successfully') {
                             Swal.fire({
                                 title: 'Success!',
-                                text : 'Post published successfully',
-                                icon : 'success',
+                                text: 'Post published successfully',
+                                icon: 'success',
                                 confirmButtonText: 'OK'
                             }).then(() => {
                                 location.reload();
@@ -344,8 +573,8 @@
                         } else {
                             Swal.fire({
                                 title: 'Error!',
-                                text : 'An unexpected error occurred. Please try again.',
-                                icon : 'error',
+                                text: 'An unexpected error occurred. Please try again.',
+                                icon: 'error',
                                 confirmButtonText: 'OK'
                             });
                         }
@@ -355,8 +584,8 @@
                         console.error('Error:', error);
                         Swal.fire({
                             title: 'Error!',
-                            text : 'An error occurred while uploading the post. Please try again.',
-                            icon : 'error',
+                            text: 'An error occurred while uploading the post. Please try again.',
+                            icon: 'error',
                             confirmButtonText: 'OK'
                         });
                     }
@@ -380,86 +609,6 @@
                 $('#photo').val('');
                 $(this).hide();
             });
-
-            function fetchPosts() {
-        $.ajax({
-            url: "{{ url('fetch-posts') }}",
-            type: "GET",
-            dataType: "json",
-            success: function(response) {
-                if (response.length > 0) {
-                    $('#postContainer').empty();
-                    $.each(response, function(index, post) {
-                        var timeAgo = moment(post.created_at).fromNow();
-                        var currentUserID = "{{ auth()->id() }}";
-
-                        var postCard = `
-                            <div class="post">
-                                <div class="post-header">
-                                    <div class="profile-info">
-                                        <h5>User Name</h5>
-                                        <span class="post-time">${timeAgo}</span>
-                                    </div>
-                                </div>
-                                <div class="post-content">
-                                    ${post.content ? `<div class="post-text">${post.content}</div>` : ''}
-                                    ${post.photo ? `<div class="post-image"><img src="${post.photo}" class="img-fluid" alt="Post Image"></div>` : ''}
-                                </div>
-                                <div class="post-options">
-                                    ${post.user_id == currentUserID ? `
-                                        <a href="{{ url('edit-post/${post.id}') }}" class="btn btn-success btn-sm">Edit</a>
-                                        <a href="{{ url('delete-post/${post.id}') }}" class="btn btn-danger btn-sm">Delete</a>
-                                    ` : ''}
-                                    <button class="btn btn-sm star-btn" data-post-id="${post.id}" style="background-color: #cbcb1cc4;">
-                                        <i class="fa fa-star" aria-hidden="true"></i> ${post.likes_count}
-                                    </button>
-                                </div>
-                            </div>`;
-                        $('#postContainer').append(postCard);
-                    });
-                } else {
-                    $('#postContainer').html('<p>No posts published yet.</p>');
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('There was a problem with the fetch operation:', error);
-            }
         });
-    }
-
-    fetchPosts();
-
-    $(document).on('click', '.star-btn', function() {
-        var postId        = $(this).data('post-id');
-        var currentUserId = "{{ auth()->id() }}";
-        var csrfToken     = $('meta[name="csrf-token"]').attr('content');
-
-        var requestData = {
-            user_id: currentUserId,
-            post_id: postId,
-            _token: csrfToken
-        };
-
-        $.ajax({
-            url: "{{ url('like-post') }}",
-            type: "POST",
-            data: requestData,
-            success: function(response) {
-                if (response.message) {
-                    // Swal.fire({
-                    //     icon: 'success',
-                    //     title: 'Success',
-                    //     text: response.message
-                    // });
-                }
-                fetchPosts();
-            },
-            error: function(xhr, status, error) {
-                console.error('Error occurred while liking the post:', error);
-            }
-        });
-    });
-
-});
     </script>
 @endsection
